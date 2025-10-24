@@ -1,60 +1,77 @@
-import React from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useAuth } from '../hooks/useAuth';
+import { useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
-const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
-  password: z.string().min(1, 'Password is required'),
-});
+const LoginPage = () => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { signInWithUsername } = useAuth();
+  const navigate = useNavigate();
 
-type LoginFormData = z.infer<typeof loginSchema>;
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await signInWithUsername(username, password);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+    }
+  };
 
-const LoginPage: React.FC = () => {
-    const { login } = useAuth();
-    const navigate = useNavigate();
-    const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginFormData>({
-        resolver: zodResolver(loginSchema)
-    });
-
-    const onSubmit = async (data: LoginFormData) => {
-        try {
-            await login(data.username, data.password);
-            navigate('/');
-        } catch (error: any) {
-            alert(`Login Failed: ${error.message}`);
-        }
-    };
-
-    // Set document title
-    React.useEffect(() => {
-        document.title = "Login";
-    }, []);
-
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-900">
-            <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-2xl shadow-lg">
-                <h1 className="text-3xl font-bold text-center text-white">Login</h1>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                    <div>
-                        <label htmlFor="username" className="block mb-2 text-sm font-medium text-gray-300">Username</label>
-                        <input id="username" {...register('username')} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                        {errors.username && <p className="mt-1 text-xs text-red-500">{errors.username.message}</p>}
-                    </div>
-                     <div>
-                        <label htmlFor="password"  className="block mb-2 text-sm font-medium text-gray-300">Password</label>
-                        <input id="password" type="password" {...register('password')} className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                        {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>}
-                    </div>
-                    <button type="submit" disabled={isSubmitting} className="w-full py-2.5 px-5 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-800 disabled:opacity-50">
-                        {isSubmitting ? 'Logging in...' : 'Login'}
-                    </button>
-                </form>
-            </div>
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-brand-background">
+      <div className="w-full max-w-md p-8 space-y-8 bg-brand-surface rounded-20 shadow-card">
+        <div>
+          <h2 className="text-3xl font-extrabold text-center text-brand-primary">
+            Sign in to your account
+          </h2>
         </div>
-    );
+        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+          <div className="rounded-md shadow-sm -space-y-px">
+            <div>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-brand-border bg-brand-surface placeholder-brand-secondary text-brand-primary rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-brand-border bg-brand-surface placeholder-brand-secondary text-brand-primary rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-center text-red-500">{error}</p>}
+
+          <div>
+            <button
+              type="submit"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Sign in
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 };
 
 export default LoginPage;

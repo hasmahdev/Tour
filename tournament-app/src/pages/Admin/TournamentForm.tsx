@@ -1,130 +1,148 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../api/supabaseClient';
-import { UserProfile } from '../../api/auth';
-import { useAuth } from '../../hooks/useAuth';
+import * as z from 'zod';
+import { supabase } from '@/api/supabaseClient';
+import { useQuery } from '@tanstack/react-query';
+import type { UserProfile } from '@/types';
 
-const tournamentSchema = z.object({
-  name: z.string().min(3, 'Tournament name is required'),
+const formSchema = z.object({
+  name: z.string().min(3, 'Tournament name must be at least 3 characters'),
   description: z.string().optional(),
-  photo: z.any().optional(),
-  participants: z.array(z.string()).optional(), // Array of user IDs
+  start_date: z.string().min(1, 'Start date is required'),
+  end_date: z.string().min(1, 'End date is required'),
+  participant_ids: z.array(z.string()).optional(),
 });
 
-type TournamentFormData = z.infer<typeof tournamentSchema>;
-
-interface Tournament {
-  id: string;
-  name: string;
-  description: string | null;
-  photo: string | null;
-}
+type TournamentFormData = z.infer<typeof formSchema>;
 
 interface TournamentFormProps {
-  tournament?: Tournament | null;
-  onSuccess: () => void;
+  onSubmit: (data: TournamentFormData) => void;
+  initialData?: TournamentFormData;
+  isLoading: boolean;
 }
 
-const TournamentForm: React.FC<TournamentFormProps> = ({ tournament, onSuccess }) => {
-  const { profile } = useAuth();
-  const queryClient = useQueryClient();
-  const isEditing = !!tournament;
+const fetchUsers = async (): Promise<UserProfile[]> => {
+  const { data, error } = await supabase.from('users').select('id, full_name, username, role');
+  if (error) throw new Error(error.message);
+  return data;
+};
 
-  const { data: users } = useQuery<UserProfile[]>({
-    queryKey: ['users-for-select'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('users').select('id, full_name').eq('role', 'user');
-      if (error) throw error;
-      return data;
-    },
+const TournamentForm: React.FC<TournamentFormProps> = ({ onSubmit, initialData, isLoading }) => {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<TournamentFormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: initialData,
   });
 
-  const { register, handleSubmit, formState: { errors } } = useForm<TournamentFormData>({
-    resolver: zodResolver(tournamentSchema),
-    defaultValues: {
-      name: tournament?.name || '',
-      description: tournament?.description || '',
-    },
+  const { data: users, isLoading: isLoadingUsers } = useQuery<UserProfile[], Error>({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
   });
 
-  const mutation = useMutation({
-    mutationFn: async (formData: TournamentFormData) => {
-      let photoUrl: string | null = tournament?.photo || null;
-
-      // 1. Upload photo if a new one is provided
-      if (formData.photo && formData.photo.length > 0) {
-        const file = formData.photo[0];
-        const filePath = `tournaments/${Date.now()}-${file.name}`;
-        const { error: uploadError } = await supabase.storage.from('tournament-photos').upload(filePath, file);
-        if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
-
-        const { data: urlData } = supabase.storage.from('tournament-photos').getPublicUrl(filePath);
-        photoUrl = urlData.publicUrl;
-      }
-
-      const tournamentPayload = {
-        name: formData.name,
-        description: formData.description,
-        photo: photoUrl,
-        created_by: isEditing ? undefined : profile?.id, // Only set creator on new tournaments
-      };
-
-      // 2. Insert or update tournament
-      let tournamentId: string;
-      if (isEditing) {
-        const { data, error } = await supabase.from('tournaments').update(tournamentPayload).eq('id', tournament.id).select().single();
-        if (error) throw error;
-        tournamentId = data.id;
-      } else {
-        const { data, error } = await supabase.from('tournaments').insert(tournamentPayload).select().single();
-        if (error) throw error;
-        tournamentId = data.id;
-      }
-
-      // 3. Handle participants
-      if (formData.participants) {
-        // First, remove existing participants if editing
-        if (isEditing) {
-            await supabase.from('tournament_users').delete().eq('tournament_id', tournamentId);
-        }
-        // Then, insert the new set of participants
-        const participantRows = formData.participants.map(userId => ({
-            tournament_id: tournamentId,
-            user_id: userId,
-        }));
-        if (participantRows.length > 0) {
-            await supabase.from('tournament_users').insert(participantRows);
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
-      onSuccess();
-    },
-    onError: (error) => {
-      alert(`Error: ${error.message}`);
-    },
-  });
+  useEffect(() => {
+    if (initialData) {
+      reset(initialData);
+    }
+  }, [initialData, reset]);
 
   return (
-    <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
-      <input {...register('name')} placeholder="Name" className="w-full bg-black/30 p-2 rounded"/>
-      {errors.name && <p className="text-red-500">{errors.name.message}</p>}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium text-brand-secondary">
+          Tournament Name
+        </label>
+        <input
+          id="name"
+          {...register('name')}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        />
+        {errors.name && <p className="mt-2 text-sm text-red-600">{errors.name.message}</p>}
+      </div>
 
-      <textarea {...register('description')} placeholder="Description" className="w-full bg-black/30 p-2 rounded"/>
+      <div>
+        <label htmlFor="description" className="block text-sm font-medium text-brand-secondary">
+          Description
+        </label>
+        <textarea
+          id="description"
+          {...register('description')}
+          rows={4}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        />
+      </div>
 
-      <input type="file" {...register('photo')} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label htmlFor="start_date" className="block text-sm font-medium text-brand-secondary">
+            Start Date
+          </label>
+          <input
+            id="start_date"
+            type="date"
+            {...register('start_date')}
+            className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          />
+          {errors.start_date && <p className="mt-2 text-sm text-red-600">{errors.start_date.message}</p>}
+        </div>
+        <div>
+          <label htmlFor="end_date" className="block text-sm font-medium text-brand-secondary">
+            End Date
+          </label>
+          <input
+            id="end_date"
+            type="date"
+            {...register('end_date')}
+            className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          />
+          {errors.end_date && <p className="mt-2 text-sm text-red-600">{errors.end_date.message}</p>}
+        </div>
+      </div>
 
-      <select multiple {...register('participants')} className="w-full bg-black/30 p-2 rounded h-40">
-        {users?.map(user => <option key={user.id} value={user.id}>{user.full_name}</option>)}
-      </select>
+      <div>
+        <label className="block text-sm font-medium text-brand-secondary">Participants</label>
+        {isLoadingUsers ? (
+          <p>Loading users...</p>
+        ) : (
+          <div className="mt-2 space-y-2 max-h-48 overflow-y-auto p-2 rounded-md border border-brand-border">
+            {users?.map((user) => (
+              <div key={user.id} className="flex items-center">
+                <input
+                  id={`user-${user.id}`}
+                  type="checkbox"
+                  value={user.id}
+                  {...register('participant_ids')}
+                  className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor={`user-${user.id}`} className="ml-3 text-sm text-brand-primary">
+                  {user.full_name} (@{user.username})
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <button type="submit" disabled={mutation.isPending}>
-        {mutation.isPending ? 'Saving...' : 'Save'}
-      </button>
+      <div className="flex justify-end gap-4">
+        <button
+          type="button"
+          // onClick={onCancel}
+          className="py-2 px-4 bg-brand-surface hover:bg-brand-hover text-brand-primary font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+        >
+          {isLoading ? 'Saving...' : 'Save Tournament'}
+        </button>
+      </div>
     </form>
   );
 };

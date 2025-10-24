@@ -28,23 +28,23 @@ const App: React.FC = () => {
             <Route path="/" element={<AppShell />}>
               <Route index element={<Navigate to="/tournaments" replace />} />
 
+              {/* Admin & Developer Routes */}
               <Route element={<ProtectedRoute allowedRoles={['developer', 'admin']} />}>
                 <Route path="users" element={<UserManagement />} />
                 <Route path="matches" element={<MatchManagement />} />
                 <Route path="score-approval" element={<ScoreApprovalPage />} />
+                <Route path="tournaments" element={<TournamentManagement />} />
               </Route>
 
-               <Route element={<ProtectedRoute allowedRoles={['developer', 'admin', 'user']} />}>
-                 <Route path="tournaments" element={<TournamentManagement />} />
-              </Route>
-
+              {/* User Routes */}
               <Route element={<ProtectedRoute allowedRoles={['user']} />}>
+                <Route path="user/tournaments" element={<UserTournamentsPage />} />
                 <Route path="my-matches" element={<MyMatchesPage />} />
-                {/* Add my-standings later */}
               </Route>
             </Route>
 
-            <Route path="*" element={<Navigate to="/" />} />
+            {/* Fallback route */}
+            <Route path="*" element={<Navigate to="/tournaments" />} />
           </Routes>
         </Router>
       </AuthProvider>

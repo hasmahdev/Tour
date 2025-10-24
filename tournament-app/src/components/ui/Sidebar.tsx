@@ -1,61 +1,90 @@
-import React from 'react';
-import { NavLink, Link } from 'react-router-dom';
-import { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { LogOut, ShieldCheck, Trophy, Users, Award, Shield, Swords } from 'lucide-react';
+import { Spinner } from './Spinner';
 
-export interface NavItem {
-  to: string;
-  text: string;
-  icon: LucideIcon;
-}
+// New, more modular components
+const SidebarLink = ({ to, icon, children }: { to: string; icon: ReactNode; children: ReactNode }) => (
+  <NavLink
+    to={to}
+    className={({ isActive }) =>
+      `flex items-center gap-4 px-4 py-2.5 rounded-lg text-base font-semibold transition-colors ${
+        isActive
+          ? 'bg-indigo-600 text-white shadow-lg'
+          : 'text-brand-secondary hover:bg-brand-surface hover:text-brand-primary'
+      }`
+    }
+  >
+    {icon}
+    <span className="truncate">{children}</span>
+  </NavLink>
+);
 
-interface SidebarProps {
-  navLinks: NavItem[];
-  user: { name?: string; email?: string };
-  onLogout: () => void;
-  isDesktopSidebarOpen: boolean;
-  toggleDesktopSidebar: () => void;
-}
-
-const Sidebar: React.FC<SidebarProps> = ({ navLinks, user, onLogout, isDesktopSidebarOpen, toggleDesktopSidebar }) => {
-  const getNavLinkClasses = (to: string) => {
-    return ({ isActive }: { isActive: boolean }) =>
-      `flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 ${
-        isActive ? 'bg-brand-primary/10 text-brand-primary' : 'text-brand-secondary hover:bg-brand-primary/5 hover:text-brand-primary'
-      } ${!isDesktopSidebarOpen ? 'justify-center' : ''}`;
-  };
+const UserMenu = () => {
+  const { profile, session, signOut } = useAuth();
+  if (!session || !profile) return null;
 
   return (
-    <aside className={`flex flex-col bg-brand-background border-r border-brand-border transition-all duration-300 ${isDesktopSidebarOpen ? 'w-64' : 'w-20'}`}>
-      <div className="flex items-center justify-between p-4 border-b border-brand-border h-16">
-          <Link to="/" className={`font-bold text-lg text-brand-primary transition-opacity duration-200 ${!isDesktopSidebarOpen ? 'opacity-0' : ''}`}>
-            TournamentApp
-          </Link>
-          {/* Toggle Button Here */}
+    <div className="mt-auto p-4 bg-brand-surface rounded-lg">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
+          {profile.full_name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 truncate">
+          <p className="text-sm font-semibold text-brand-primary truncate">{profile.full_name}</p>
+          <p className="text-xs text-brand-secondary truncate">{profile.role}</p>
+        </div>
+        <button onClick={signOut} className="text-brand-secondary hover:text-brand-primary transition-colors">
+          <LogOut size={20} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Main Sidebar Component
+const Sidebar = () => {
+  const { profile, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <aside className="w-64 flex flex-col bg-brand-background border-r border-brand-border p-4">
+        <div className="flex-1 flex items-center justify-center">
+          <Spinner />
+        </div>
+      </aside>
+    );
+  }
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'developer';
+  const isUser = profile?.role === 'user';
+
+  return (
+    <aside className="w-64 flex flex-col bg-brand-background border-r border-brand-border p-4 gap-2">
+      <div className="flex items-center gap-3 mb-6 p-2">
+        <Trophy className="w-8 h-8 text-indigo-600" />
+        <h1 className="text-xl font-bold text-brand-primary">TournamentApp</h1>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2">
-        {navLinks.map((link) => (
-          <NavLink key={link.to} to={link.to} className={getNavLinkClasses(link.to)}>
-            <link.icon className={`h-5 w-5 ${isDesktopSidebarOpen ? 'mr-3' : ''}`} />
-            <span className={`transition-opacity duration-200 ${!isDesktopSidebarOpen ? 'opacity-0' : ''}`}>{link.text}</span>
-          </NavLink>
-        ))}
+      <nav className="flex-1 flex flex-col gap-2">
+        {isAdmin && (
+          <>
+            <SidebarLink to="/tournaments" icon={<Award size={20} />}>Tournaments</SidebarLink>
+            <SidebarLink to="/matches" icon={<Swords size={20} />}>Matches</SidebarLink>
+            <SidebarLink to="/users" icon={<Users size={20} />}>User Management</SidebarLink>
+            <SidebarLink to="/score-approval" icon={<ShieldCheck size={20} />}>Score Approval</SidebarLink>
+          </>
+        )}
+        {isUser && (
+          <>
+            <SidebarLink to="/user/tournaments" icon={<Trophy size={20} />}>Tournaments</SidebarLink>
+            <SidebarLink to="/my-matches" icon={<Shield size={20} />}>My Matches</SidebarLink>
+          </>
+        )}
       </nav>
 
-      <div className="p-4 border-t border-brand-border">
-          <div className={`flex items-center ${!isDesktopSidebarOpen ? 'justify-center' : ''}`}>
-              {/* User Avatar Placeholder */}
-              <div className="w-10 h-10 bg-gray-700 rounded-full"></div>
-              <div className={`ml-3 transition-opacity duration-200 ${!isDesktopSidebarOpen ? 'opacity-0' : ''}`}>
-                  <p className="text-sm font-medium text-brand-primary">{user.name}</p>
-                  <p className="text-xs text-brand-secondary">{user.email}</p>
-              </div>
-          </div>
-          <button onClick={onLogout} className={`w-full mt-4 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 text-red-500 hover:bg-red-500/10`}>
-              {/* Logout Icon */}
-              <span className={`transition-opacity duration-200 ${!isDesktopSidebarOpen ? 'opacity-0' : 'hidden'}`}>Logout</span>
-          </button>
-      </div>
+      <UserMenu />
     </aside>
   );
 };

@@ -1,98 +1,75 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../api/supabaseClient';
-import { login as apiLogin, logout as apiLogout, UserProfile } from '../api/auth';
-import type { Session, User } from '@supabase/supabase-js';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '@/api/supabaseClient';
+import type { UserProfile } from '@/types';
 
 interface AuthContextType {
   session: Session | null;
-  user: User | null;
   profile: UserProfile | null;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
   isLoading: boolean;
+  signInWithUsername: (username: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const queryClient = useQueryClient();
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch the session on initial load
-  const { data: initialSession, isLoading } = useQuery({
-    queryKey: ['session'],
-    queryFn: async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      setSession(data.session);
-      return data.session;
-    },
-    staleTime: Infinity,
-    retry: false,
-  });
-
-  // Handle auth state changes
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      // When auth state changes, refetch the profile
-      if (session) {
-        queryClient.invalidateQueries({ queryKey: ['profile'] });
-      } else {
-        setProfile(null);
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setProfile(session?.user?.user_metadata as UserProfile || null);
       }
-    });
-    return () => authListener.subscription.unsubscribe();
-  }, [queryClient]);
+    );
 
-  // Fetch user profile when session is available
-  const { data: userProfile } = useQuery({
-    queryKey: ['profile', session?.user?.id],
-    queryFn: async () => {
-      if (!session?.user?.user_metadata.app_user_id) return null;
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.user_metadata.app_user_id)
-        .single();
-      if (error) throw error;
-      setProfile(data);
-      return data;
-    },
-    enabled: !!session,
-  });
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      setProfile(session?.user?.user_metadata as UserProfile || null);
+      setIsLoading(false);
+    };
 
+    checkUser();
 
-  const loginMutation = useMutation({
-    mutationFn: ({ username, password }: {username: string, password:string}) => apiLogin(username, password),
-    onSuccess: (user) => {
-      setProfile(user);
-      queryClient.invalidateQueries({ queryKey: ['session'] });
-    },
-  });
-
-  const logoutMutation = useMutation({
-    mutationFn: apiLogout,
-    onSuccess: () => {
-      setSession(null);
-      setProfile(null);
-      queryClient.clear();
-    },
-  });
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const value = {
     session,
-    user: session?.user || null,
     profile,
-    login: async (username, password) => {
-      await loginMutation.mutateAsync({ username, password });
-    },
-    logout: () => {
-      logoutMutation.mutate();
-    },
     isLoading,
+    async signInWithUsername(username: string, password: string) {
+      const { data, error } = await supabase.functions.invoke('login', {
+        body: { username, password },
+      });
+
+      if (error) throw new Error(error.message);
+
+      const { session: newSession, user: authUser } = data;
+
+      await supabase.auth.setSession(newSession);
+
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.user_metadata.app_user_id)
+        .single();
+
+      if (profileError) throw new Error(profileError.message);
+
+      setSession(newSession);
+      setProfile(userProfile);
+    },
+    async signOut() {
+      await supabase.auth.signOut();
+      setProfile(null);
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -100,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === null) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

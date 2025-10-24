@@ -1,117 +1,107 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../api/supabaseClient';
-import { UserProfile } from '../../api/auth';
-import { useAuth } from '../../hooks/useAuth';
+import * as z from 'zod';
+import type { UserProfile } from '@/types';
 
-// Zod schema for validation
-const userSchema = z.object({
+const formSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
-  full_name: z.string().min(2, 'Full name is required'),
-  phone: z.string().optional(),
-  password: z.string().min(8, 'Password must be at least 8 characters').optional().or(z.literal('')),
-  role: z.enum(['admin', 'user'], { required_error: 'Role is required' }),
+  full_name: z.string().min(3, 'Full name must be at least 3 characters'),
+  password: z.string().optional(),
+  role: z.enum(['admin', 'user']),
 });
 
-type UserFormData = z.infer<typeof userSchema>;
+type UserFormData = z.infer<typeof formSchema>;
 
 interface UserFormProps {
-  user?: UserProfile | null;
-  onSuccess: () => void;
+  onSubmit: (data: UserFormData) => void;
+  initialData?: UserProfile | null;
+  isLoading: boolean;
 }
 
-const UserForm: React.FC<UserFormProps> = ({ user, onSuccess }) => {
-  const { profile: currentUser } = useAuth();
-  const queryClient = useQueryClient();
-  const isEditing = !!user;
-
-  const { register, handleSubmit, formState: { errors } } = useForm<UserFormData>({
-    resolver: zodResolver(userSchema),
-    defaultValues: {
-      username: user?.username || '',
-      full_name: user?.full_name || '',
-      phone: user?.phone || '',
-      role: user?.role === 'admin' ? 'admin' : 'user',
-    },
+const UserForm: React.FC<UserFormProps> = ({ onSubmit, initialData, isLoading }) => {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<UserFormData>({
+    resolver: zodResolver(formSchema),
   });
 
-  const createOrUpdateUser = async (formData: UserFormData) => {
-    if (isEditing) {
-      // Update logic
-      const { data, error } = await supabase
-        .from('users')
-        .update({ ...formData, password: undefined }) // Don't update password for now
-        .eq('id', user.id);
-      if (error) throw error;
-      return data;
-    } else {
-      // Create logic using the edge function
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: formData,
+  useEffect(() => {
+    if (initialData) {
+      reset({
+        ...initialData,
+        role: initialData.role === 'developer' ? 'admin' : initialData.role,
       });
-      if (error) throw new Error(error.message);
-      return data;
+    } else {
+      reset({
+        username: '',
+        full_name: '',
+        password: '',
+        role: 'user',
+      });
     }
-  };
-
-  const mutation = useMutation({
-    mutationFn: createOrUpdateUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      onSuccess();
-    },
-    onError: (error) => {
-      // Basic error handling, can be improved with toasts
-      alert(`Error: ${error.message}`);
-    },
-  });
-
-  const onSubmit = (data: UserFormData) => {
-    if (isEditing && !data.password) {
-      delete data.password; // Don't send empty password on edit
-    }
-    mutation.mutate(data);
-  };
+  }, [initialData, reset]);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div>
-        <label htmlFor="username" className="block mb-1 text-sm font-medium">Username</label>
-        <input id="username" {...register('username')} className="w-full bg-black/30 border border-brand-border p-2 rounded-lg" />
-        {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>}
+        <label htmlFor="username" className="block text-sm font-medium text-brand-secondary">
+          Username
+        </label>
+        <input
+          id="username"
+          {...register('username')}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        />
+        {errors.username && <p className="mt-2 text-sm text-red-600">{errors.username.message}</p>}
       </div>
       <div>
-        <label htmlFor="full_name" className="block mb-1 text-sm font-medium">Full Name</label>
-        <input id="full_name" {...register('full_name')} className="w-full bg-black/30 border border-brand-border p-2 rounded-lg" />
-        {errors.full_name && <p className="text-red-500 text-xs mt-1">{errors.full_name.message}</p>}
+        <label htmlFor="full_name" className="block text-sm font-medium text-brand-secondary">
+          Full Name
+        </label>
+        <input
+          id="full_name"
+          {...register('full_name')}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        />
+        {errors.full_name && <p className="mt-2 text-sm text-red-600">{errors.full_name.message}</p>}
       </div>
       <div>
-        <label htmlFor="phone" className="block mb-1 text-sm font-medium">Phone</label>
-        <input id="phone" {...register('phone')} className="w-full bg-black/30 border border-brand-border p-2 rounded-lg" />
+        <label htmlFor="password" className="block text-sm font-medium text-brand-secondary">
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          {...register('password')}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        />
+        {errors.password && <p className="mt-2 text-sm text-red-600">{errors.password.message}</p>}
       </div>
       <div>
-        <label htmlFor="password" className="block mb-1 text-sm font-medium">{isEditing ? 'New Password (optional)' : 'Password'}</label>
-        <input id="password" type="password" {...register('password')} className="w-full bg-black/30 border border-brand-border p-2 rounded-lg" />
-        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
-      </div>
-      <div>
-        <label htmlFor="role" className="block mb-1 text-sm font-medium">Role</label>
-        <select id="role" {...register('role')} className="w-full bg-black/30 border border-brand-border p-2 rounded-lg" disabled={currentUser?.role !== 'developer'}>
-          {currentUser?.role === 'developer' && <option value="admin">Admin</option>}
+        <label htmlFor="role" className="block text-sm font-medium text-brand-secondary">
+          Role
+        </label>
+        <select
+          id="role"
+          {...register('role')}
+          className="mt-1 block w-full bg-brand-surface border border-brand-border rounded-md shadow-sm py-2 px-3 text-brand-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        >
           <option value="user">User</option>
+          <option value="admin">Admin</option>
         </select>
-        {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role.message}</p>}
+        {errors.role && <p className="mt-2 text-sm text-red-600">{errors.role.message}</p>}
       </div>
-      <div className="flex justify-end pt-4">
+      <div className="flex justify-end gap-4">
         <button
           type="submit"
-          disabled={mutation.isPending}
-          className="bg-brand-primary text-brand-background font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-all disabled:opacity-50"
+          disabled={isLoading}
+          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
-          {mutation.isPending ? 'Saving...' : 'Save'}
+          {isLoading ? 'Saving...' : 'Save User'}
         </button>
       </div>
     </form>
