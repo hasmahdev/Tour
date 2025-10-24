@@ -1,0 +1,5 @@
+
+> tournament-app@0.0.0 dev
+> node_modules/vite/bin/vite.js
+
+sh: 1: node_modules/vite/bin/vite.js: not found
